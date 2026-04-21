@@ -1,0 +1,23 @@
+{
+    "schema": "1.0",
+    "type": "whmcs-addons",
+    "name": "atomfleet-proxmox-admin",
+    "license": "proprietary",
+    "category": "provisioning",
+    "description": {
+        "name": "AtomFleet Proxmox Admin",
+        "tagline": "WHMCS admin dashboard and IPv4 pool manager for AtomFleet Proxmox servers.",
+        "long": "AtomFleet Proxmox Admin gives WHMCS administrators a cluster overview, guest inventory, managed IPv4 pool controls, and fast Proxmox jump-off points without moving deep infrastructure control out of Proxmox.",
+        "features": [
+            "Cluster summary cards",
+            "Node and guest inventory tables",
+            "IPv4 pool import and release controls",
+            "Proxmox panel quick links"
+        ]
+    },
+    "authors": [
+        {
+            "name": "AtomFleet"
+        }
+    ]
+}

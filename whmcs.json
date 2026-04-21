@@ -1,0 +1,30 @@
+{
+    "schema": "1.0",
+    "type": "whmcs-servers",
+    "name": "atomfleet-proxmox",
+    "license": "proprietary",
+    "category": "provisioning",
+    "description": {
+        "name": "AtomFleet Proxmox",
+        "tagline": "WHMCS Proxmox suite with a provisioning module, admin dashboard, and D3.js client panel.",
+        "long": "AtomFleet Proxmox packages a WHMCS server module for provisioning QEMU and LXC services plus an admin addon for cluster overview and IPv4 pool management, while keeping deep infrastructure control in Proxmox.",
+        "features": [
+            "Proxmox provisioning lifecycle support",
+            "Automated IPv4 pool allocation and cloud-init delivery",
+            "Native WHMCS server sync support",
+            "Admin guest link repair and overview dashboard",
+            "Modern WHMCS client area panel",
+            "Live D3.js resource charts",
+            "API token and username/password authentication"
+        ]
+    },
+    "support": {
+        "docs_url": "https://developers.whmcs.com/provisioning-modules/",
+        "learn_more": "https://pve.proxmox.com/pve-docs/"
+    },
+    "authors": [
+        {
+            "name": "AtomFleet"
+        }
+    ]
+}
