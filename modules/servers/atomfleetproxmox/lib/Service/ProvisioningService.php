@@ -309,7 +309,7 @@ final class ProvisioningService extends AbstractProxmoxService
         $ipConfig = $this->buildQemuIpConfig();
 
         if ($bridge !== '') {
-            $payload['net0'] = $nicModel . ',bridge=' . $bridge;
+            $payload['net0'] = $this->buildQemuNetDefinition($nicModel, $bridge);
         }
 
         if ($ipConfig !== '') {
@@ -343,6 +343,17 @@ final class ProvisioningService extends AbstractProxmoxService
         }
 
         return $payload;
+    }
+
+    private function buildQemuNetDefinition(string $nicModel, string $bridge): string
+    {
+        $model = strtolower(trim($nicModel));
+
+        if ($model === '') {
+            $model = 'virtio';
+        }
+
+        return 'model=' . $model . ',bridge=' . $bridge;
     }
 
     private function buildLxcConfigPayload(): array
