@@ -20,11 +20,17 @@ final class ModuleParameters
 
     public function config(string $name, $default = null)
     {
-        $configOptions = isset($this->params['configoptions']) && is_array($this->params['configoptions'])
+        $moduleConfig = $this->moduleConfigOptions();
+
+        if (array_key_exists($name, $moduleConfig)) {
+            return $moduleConfig[$name];
+        }
+
+        $configurableOptions = isset($this->params['configoptions']) && is_array($this->params['configoptions'])
             ? $this->params['configoptions']
             : array();
 
-        return array_key_exists($name, $configOptions) ? $configOptions[$name] : $default;
+        return array_key_exists($name, $configurableOptions) ? $configurableOptions[$name] : $default;
     }
 
     public function intConfig(string $name, int $default = 0): int
@@ -187,6 +193,33 @@ final class ModuleParameters
         }
 
         return $this->params['model']->serviceProperties;
+    }
+
+    private function moduleConfigOptions(): array
+    {
+        static $configOptionNames;
+
+        if ($configOptionNames === null) {
+            $configOptionNames = array();
+
+            if (function_exists('atomfleetproxmox_ConfigOptions')) {
+                $configOptionNames = array_keys((array) atomfleetproxmox_ConfigOptions());
+            }
+        }
+
+        $values = array();
+
+        foreach ($configOptionNames as $index => $optionName) {
+            $paramKey = 'configoption' . ($index + 1);
+
+            if (!array_key_exists($paramKey, $this->params)) {
+                continue;
+            }
+
+            $values[$optionName] = $this->params[$paramKey];
+        }
+
+        return $values;
     }
 
     private static function toBool($value): bool
