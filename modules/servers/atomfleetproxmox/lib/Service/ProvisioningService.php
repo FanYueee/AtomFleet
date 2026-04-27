@@ -475,6 +475,10 @@ final class ProvisioningService extends AbstractProxmoxService
                 continue;
             }
 
+            if (stripos($value, 'media=cdrom') !== false || stripos($value, 'cloudinit') !== false) {
+                continue;
+            }
+
             $diskKey = (string) $key;
 
             if (preg_match('/size=(\d+(?:\.\d+)?)G/i', $value, $matches)) {
