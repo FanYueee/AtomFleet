@@ -188,11 +188,13 @@ final class ModuleParameters
             return null;
         }
 
-        if (!property_exists($this->params['model'], 'serviceProperties')) {
+        try {
+            $serviceProperties = $this->params['model']->serviceProperties;
+        } catch (\Throwable $e) {
             return null;
         }
 
-        return $this->params['model']->serviceProperties;
+        return is_object($serviceProperties) ? $serviceProperties : null;
     }
 
     private function moduleConfigOptions(): array

@@ -90,6 +90,7 @@ abstract class AbstractProxmoxService
             'Guest Type' => '',
             'Instance Name' => '',
             'Proxmox URI' => '',
+            'Username' => '',
         ));
     }
 
