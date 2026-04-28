@@ -62,7 +62,7 @@ final class ProxmoxApiClient
 
     public function delete(string $path, array $payload = array())
     {
-        return $this->request('DELETE', $path, $payload);
+        return $this->request('DELETE', $path, array(), $payload);
     }
 
     private function request(string $method, string $path, array $payload = array(), array $query = array())
@@ -84,7 +84,7 @@ final class ProxmoxApiClient
             }
         }
 
-        if ($method !== 'GET') {
+        if ($method !== 'GET' && !($method === 'DELETE' && empty($payload))) {
             $headers[] = 'Content-Type: application/x-www-form-urlencoded';
         }
 
@@ -100,7 +100,7 @@ final class ProxmoxApiClient
             curl_setopt($curl, CURLOPT_POST, true);
         }
 
-        if ($method !== 'GET' && !empty($payload)) {
+        if ($method !== 'GET' && $method !== 'DELETE' && !empty($payload)) {
             curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($payload, '', '&'));
         }
 
