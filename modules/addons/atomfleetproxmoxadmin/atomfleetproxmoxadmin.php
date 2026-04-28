@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use AtomFleet\Whmcs\Proxmox\Exception\ModuleException;
 use AtomFleet\Whmcs\Proxmox\Repository\IpPoolRepository;
 use AtomFleet\Whmcs\Proxmox\Service\ClusterService;
 use Illuminate\Database\Capsule\Manager as Capsule;
@@ -209,8 +210,8 @@ function atomfleetproxmoxadmin_output($vars)
         echo '<label>Bridge<input type="text" name="default_bridge" value="" placeholder="vmbr0" /></label>';
         echo '</div>';
         echo '<label class="afpa-textarea-label">IPv4 Addresses</label>';
-        echo '<textarea name="ip_addresses" rows="6" placeholder="203.0.113.10&#10;203.0.113.11&#10;203.0.113.12/24,203.0.113.1,public-v4,vmbr0"></textarea>';
-        echo '<div class="afpa-form-note">Each line accepts <code>IP</code> or <code>IP/prefix,gateway,pool,bridge</code>. Empty fields fall back to the defaults above.</div>';
+        echo '<textarea name="ip_addresses" rows="6" placeholder="203.0.113.10&#10;203.0.113.11&#10;10.0.6.0/24,10.0.6.1,public-v4,vmbr0"></textarea>';
+        echo '<div class="afpa-form-note">Each line accepts <code>IP</code>, <code>host/prefix</code>, or <code>network/prefix,gateway,pool,bridge</code>. Network CIDRs expand into usable IPv4 hosts and skip the gateway when it matches a host inside that subnet.</div>';
         echo '<button type="submit" class="btn btn-primary">Import IP Addresses</button>';
         echo '</form>';
 
@@ -360,24 +361,143 @@ function atomfleetproxmoxadmin_parse_ip_import(array $input): array
 
         $segments = array_map('trim', explode(',', $line));
         $addressPart = (string) ($segments[0] ?? '');
-        $address = $addressPart;
-        $prefix = $defaultPrefix;
+        $gateway = trim((string) ($segments[1] ?? $defaultGateway));
+        $poolName = trim((string) ($segments[2] ?? $defaultPool));
+        $bridge = trim((string) ($segments[3] ?? $defaultBridge));
+        $expanded = atomfleetproxmoxadmin_expand_ip_import_targets($addressPart, $defaultPrefix, $gateway);
 
-        if (strpos($addressPart, '/') !== false) {
-            list($address, $inlinePrefix) = array_pad(explode('/', $addressPart, 2), 2, '');
-            $prefix = (int) $inlinePrefix;
+        foreach ($expanded['addresses'] as $address) {
+            $entries[] = array(
+                'address' => $address,
+                'prefix' => $expanded['prefix'],
+                'gateway' => $gateway,
+                'pool_name' => $poolName,
+                'bridge' => $bridge,
+            );
         }
-
-        $entries[] = array(
-            'address' => trim($address),
-            'prefix' => $prefix,
-            'gateway' => trim((string) ($segments[1] ?? $defaultGateway)),
-            'pool_name' => trim((string) ($segments[2] ?? $defaultPool)),
-            'bridge' => trim((string) ($segments[3] ?? $defaultBridge)),
-        );
     }
 
     return $entries;
+}
+
+function atomfleetproxmoxadmin_expand_ip_import_targets(string $addressPart, int $defaultPrefix, string $gateway): array
+{
+    $addressPart = trim($addressPart);
+    $address = $addressPart;
+    $prefix = $defaultPrefix;
+    $hasSubnet = false;
+
+    if (strpos($addressPart, '/') !== false) {
+        list($address, $inlineMask) = array_pad(explode('/', $addressPart, 2), 2, '');
+        $address = trim($address);
+        $inlineMask = trim($inlineMask);
+        $hasSubnet = $inlineMask !== '';
+
+        if ($hasSubnet) {
+            $prefix = atomfleetproxmoxadmin_parse_prefix($inlineMask);
+        }
+    }
+
+    if (!filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        return array(
+            'addresses' => array($address),
+            'prefix' => $prefix,
+        );
+    }
+
+    if (!$hasSubnet || $prefix < 1 || $prefix > 32) {
+        return array(
+            'addresses' => array($address),
+            'prefix' => $prefix,
+        );
+    }
+
+    $networkLong = atomfleetproxmoxadmin_network_long($address, $prefix);
+    $addressLong = ip2long($address);
+
+    if ($addressLong === false || $networkLong === false || $addressLong !== $networkLong) {
+        return array(
+            'addresses' => array($address),
+            'prefix' => $prefix,
+        );
+    }
+
+    return array(
+        'addresses' => atomfleetproxmoxadmin_expand_network_hosts($networkLong, $prefix, $gateway),
+        'prefix' => $prefix,
+    );
+}
+
+function atomfleetproxmoxadmin_parse_prefix(string $mask): int
+{
+    if (ctype_digit($mask)) {
+        return (int) $mask;
+    }
+
+    if (!filter_var($mask, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        throw new ModuleException('Invalid IPv4 prefix or netmask: ' . $mask);
+    }
+
+    $maskLong = ip2long($mask);
+
+    if ($maskLong === false) {
+        throw new ModuleException('Invalid IPv4 netmask: ' . $mask);
+    }
+
+    $maskUnsigned = sprintf('%u', $maskLong);
+    $binary = str_pad(decbin((int) $maskUnsigned), 32, '0', STR_PAD_LEFT);
+
+    if (!preg_match('/^1*0*$/', $binary)) {
+        throw new ModuleException('IPv4 netmask must be contiguous: ' . $mask);
+    }
+
+    return substr_count($binary, '1');
+}
+
+function atomfleetproxmoxadmin_network_long(string $address, int $prefix)
+{
+    $addressLong = ip2long($address);
+
+    if ($addressLong === false) {
+        return false;
+    }
+
+    $addressUnsigned = (int) sprintf('%u', $addressLong);
+    $hostBits = 32 - $prefix;
+    $mask = $prefix === 0 ? 0 : ((0xFFFFFFFF << $hostBits) & 0xFFFFFFFF);
+
+    return $addressUnsigned & $mask;
+}
+
+function atomfleetproxmoxadmin_expand_network_hosts(int $networkLong, int $prefix, string $gateway): array
+{
+    $hostCount = 1 << max(0, 32 - $prefix);
+
+    if ($prefix < 20 && $hostCount > 4096) {
+        throw new ModuleException('CIDR import is limited to 4096 addresses at a time. Split larger networks into smaller ranges.');
+    }
+
+    $start = $networkLong;
+    $end = $networkLong + $hostCount - 1;
+
+    if ($prefix <= 30) {
+        $start++;
+        $end--;
+    }
+
+    $gatewayLong = filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? ip2long($gateway) : false;
+    $gatewayUnsigned = $gatewayLong === false ? null : (int) sprintf('%u', $gatewayLong);
+    $addresses = array();
+
+    for ($current = $start; $current <= $end; $current++) {
+        if ($gatewayUnsigned !== null && $current === $gatewayUnsigned) {
+            continue;
+        }
+
+        $addresses[] = long2ip($current);
+    }
+
+    return $addresses;
 }
 
 function atomfleetproxmoxadmin_card(string $label, string $value, string $subtext): string
